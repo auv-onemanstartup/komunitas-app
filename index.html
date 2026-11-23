@@ -18,7 +18,9 @@
   #atur img { width: 72px; height: 72px; border-radius: 18px; }
   h1 { font-size: 22px; margin: 12px 0 4px; }
   p { color: var(--mut); margin: 6px 0; }
-  textarea { width: 100%; min-height: 96px; margin-top: 14px; padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: 14px/1.4 ui-monospace, monospace; }
+  textarea, input { width: 100%; margin-top: 6px; }
+  textarea { min-height: 84px; }
+  textarea, input { padding: 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: 14px/1.4 ui-monospace, monospace; }
   button { width: 100%; margin-top: 12px; padding: 12px; border: 0; border-radius: 12px; background: var(--pri); color: #fff; font: 600 15px system-ui, sans-serif; }
   code { word-break: break-all; }
   .err { color: #dc2626; font-size: 13px; min-height: 18px; }
@@ -34,19 +36,29 @@
 <section id="atur">
   <img src="ikon-192.png" alt="">
   <h1>Komunitas</h1>
-  <p>Tempel link web app dari Apps Script, lengkap dengan kuncinya:</p>
-  <p><code>https://script.google.com/macros/s/…/exec?k=KUNCI</code></p>
-  <textarea id="link" placeholder="https://script.google.com/macros/s/…/exec?k=…" autocomplete="off" spellcheck="false"></textarea>
+  <p>1. Tempel <b>link web app</b> (URL berakhiran <code>/exec</code> dari Apps Script → Terapkan):</p>
+  <textarea id="link" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false"></textarea>
+  <p>2. Isi <b>kunci</b> (KUNCI dari kunci.txt):</p>
+  <input id="kunci" placeholder="kunci" autocomplete="off" autocapitalize="off" spellcheck="false">
   <div class="err" id="err"></div>
   <button id="simpan">Simpan & buka</button>
-  <p style="font-size:13px">Link hanya disimpan di HP ini. Untuk menggantinya nanti, buka aplikasi lalu tekan "Ganti link" saat memuat, atau tambahkan <code>?atur=1</code> di alamatnya.</p>
+  <p style="font-size:13px">Disimpan hanya di HP ini. Untuk mengganti nanti, tekan "Ganti link" saat memuat.</p>
 </section>
 <script>
   const KUNCI_SIMPAN = 'komunitas-link';
   const ambil = () => { try { return localStorage.getItem(KUNCI_SIMPAN) || ''; } catch (e) { return ''; } };
   const simpan = (v) => { try { localStorage.setItem(KUNCI_SIMPAN, v); return true; } catch (e) { return false; } };
-  const cocok = (v) => /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec\?(.*&)?k=[^&\s]+/.test(v);
+  // URL web app biasa atau akun Google Workspace (/a/domain/macros/…)
+  const RE_EXEC = /^https:\/\/script\.google\.com\/(?:a\/[^/\s]+\/)?macros\/s\/[\w-]+\/exec/;
+  const cocok = (v) => RE_EXEC.test(v) && /[?&]k=[^&\s]+/.test(v);
   const $ = (s) => document.querySelector(s);
+  const bersih = (v) => String(v || '').replace(/\s+/g, '');
+  // pisahkan link & kunci (kalau link yang ditempel sudah berisi ?k=)
+  function urai(v) {
+    v = bersih(v);
+    const m = /[?&]k=([^&#]+)/.exec(v);
+    return { dasar: v.replace(/[?#].*$/, ''), kunci: m ? decodeURIComponent(m[1]) : '' };
+  }
 
   function buka(link) {
     $('#atur').style.display = 'none';
@@ -59,15 +71,25 @@
   function atur(pesan) {
     $('#memuat').style.display = 'none';
     $('#atur').style.display = 'block';
-    $('#link').value = ambil();
+    const u = urai(ambil());
+    $('#link').value = u.dasar; $('#kunci').value = u.kunci;
     $('#err').textContent = pesan || '';
   }
+  $('#link').addEventListener('input', () => {
+    const u = urai($('#link').value);
+    if (u.kunci) { $('#kunci').value = u.kunci; $('#link').value = u.dasar; }
+  });
   $('#simpan').onclick = () => {
-    const v = $('#link').value.trim();
-    if (!cocok(v)) return ($('#err').textContent = 'Link belum benar. Harus diawali https://script.google.com/macros/s/ dan berisi /exec?k=…');
-    simpan(v);
+    const u = urai($('#link').value);
+    const kunci = bersih($('#kunci').value) || u.kunci;
+    const err = (t) => ($('#err').textContent = t);
+    if (/\/dev\b/.test(u.dasar)) return err('Ini URL /dev (untuk uji). Pakai URL yang berakhiran /exec dari Terapkan → Kelola deployment.');
+    if (!RE_EXEC.test(u.dasar)) return err('Link belum benar. Harus diawali https://script.google.com/ dan berakhiran /exec.');
+    if (!kunci) return err('Kunci belum diisi. Salin KUNCI dari kunci.txt.');
+    const link = u.dasar + '?k=' + encodeURIComponent(kunci);
+    simpan(link);
     history.replaceState(null, '', location.pathname);
-    buka(v);
+    buka(link);
   };
 
   const p = new URLSearchParams(location.search);
